@@ -124,7 +124,7 @@ export const getCurrentStreak = (data) => {
     const d = String(cursor.getDate()).padStart(2, '0');
     const dateStr = `${y}-${m}-${d}`;
 
-    if (dateStr < '2026-03-16') break;
+    if (dateStr < '2026-03-17') break;
     if (!dayActive(dateStr)) break;
 
     streak++;

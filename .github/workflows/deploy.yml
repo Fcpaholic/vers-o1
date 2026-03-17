@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [claude/personal-accountability-app-daeql]
+    branches: [claude/accountability-app-mobile-Wi7Ne]
   workflow_dispatch:
 
 permissions:
