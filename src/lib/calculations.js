@@ -24,7 +24,7 @@ export const getDayKm = (dayData) =>
  */
 export const getCalorieStatus = (calories, dateStr) => {
   if (calories === null || calories === undefined) return 'unlogged';
-  const target = dateStr ? getWeekCalorieTarget(dateStr).target : 1350;
+  const target = dateStr ? getWeekCalorieTarget(dateStr).target : 1200;
   if (calories <= target) return 'deficit';
   if (calories < CALORIE_MAINTENANCE) return 'warning';
   return 'surplus';
@@ -124,7 +124,7 @@ export const getCurrentStreak = (data) => {
     const d = String(cursor.getDate()).padStart(2, '0');
     const dateStr = `${y}-${m}-${d}`;
 
-    if (dateStr < '2026-03-16') break;
+    if (dateStr < '2026-03-22') break;
     if (!dayActive(dateStr)) break;
 
     streak++;
@@ -135,61 +135,39 @@ export const getCurrentStreak = (data) => {
 };
 
 // ─── Discipline score (0-100) ─────────────────────────────────────────────
-
-const POINTS = {
-  deficit: 10,
-  gym: 8,
-  run: 5,
-  weekGym: 15,
-  weekKm: 15,
-  weekAllDeficit: 20,
-};
+// Weights: Running 35%, Gym 30%, Nutrition 35%
 
 export const getDisciplineScore = (data) => {
   const allDays = data.days || {};
   const todayStr = today();
-  let earned = 0;
-  let possible = 0;
 
-  for (const { days } of getChallengeWeeks()) {
-    const pastDays = days.filter((d) => d <= todayStr);
-    if (pastDays.length === 0) continue;
+  const challengeDays = getAllChallengeDays().filter((d) => d <= todayStr);
+  if (challengeDays.length === 0) return 0;
 
-    for (const day of pastDays) {
-      possible += POINTS.deficit + POINTS.gym + POINTS.run;
-      const d = allDays[day];
-      if (!d) continue;
-      const { target: dayTarget } = getWeekCalorieTarget(day);
-      if (d.calories !== null && d.calories <= dayTarget) earned += POINTS.deficit;
-      if (d.gymSessions && d.gymSessions > 0) earned += POINTS.gym;
-      if (d.runs && d.runs.length > 0) earned += POINTS.run;
-    }
+  const daysElapsed = challengeDays.length;
+  const weeksElapsed = daysElapsed / 7;
 
-    // Week completion bonus — only for fully elapsed weeks
-    const weekElapsed = days.every((d) => d < todayStr);
-    if (weekElapsed) {
-      possible += POINTS.weekGym + POINTS.weekKm + POINTS.weekAllDeficit;
-      const stats = getWeekStats(days, allDays);
-      if (stats.gymSessions >= WEEKLY_GYM_TARGET) earned += POINTS.weekGym;
-      if (stats.km >= WEEKLY_KM_TARGET) earned += POINTS.weekKm;
+  let totalKm = 0;
+  let totalGym = 0;
+  let deficitDays = 0;
 
-      const loggedInWeek = days.filter(
-        (d) => allDays[d] && allDays[d].calories !== null
-      );
-      if (
-        loggedInWeek.length === days.length &&
-        loggedInWeek.every((d) => {
-          const { target } = getWeekCalorieTarget(d);
-          return allDays[d].calories <= target;
-        })
-      ) {
-        earned += POINTS.weekAllDeficit;
-      }
-    }
+  for (const day of challengeDays) {
+    const d = allDays[day];
+    if (!d) continue;
+    totalKm += getDayKm(d);
+    totalGym += d.gymSessions || 0;
+    const { target: dayTarget } = getWeekCalorieTarget(day);
+    if (d.calories !== null && d.calories <= dayTarget) deficitDays++;
   }
 
-  if (possible === 0) return 0;
-  return Math.round((earned / possible) * 100);
+  const expectedKm = weeksElapsed * WEEKLY_KM_TARGET;
+  const expectedGym = weeksElapsed * WEEKLY_GYM_TARGET;
+
+  const runScore = expectedKm > 0 ? Math.min((totalKm / expectedKm) * 100, 100) : 0;
+  const gymScore = expectedGym > 0 ? Math.min((totalGym / expectedGym) * 100, 100) : 0;
+  const nutritionScore = (deficitDays / daysElapsed) * 100;
+
+  return Math.round(runScore * 0.35 + gymScore * 0.30 + nutritionScore * 0.35);
 };
 
 // ─── Badges ──────────────────────────────────────────────────────────────────

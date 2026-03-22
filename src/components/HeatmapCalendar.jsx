@@ -73,7 +73,7 @@ export default function HeatmapCalendar({ data, todayStr }) {
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
         <div className="mb-4">
           <h2 className="text-sm font-bold text-zinc-300">Challenge Calendar</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">March 16 → April 20, 2026 · 36 days</p>
+          <p className="text-xs text-zinc-500 mt-0.5">March 23 → April 23, 2026 · 32 days</p>
         </div>
 
         {/* Day headers */}
@@ -167,7 +167,7 @@ function WeekSummaryStrip({ data, weeks }) {
       {weeks.map(({ weekNumber, weekStart, days }) => {
         const stats = calcStats(days);
         const kmPct = Math.min((stats.km / 25) * 100, 100);
-        const gymPct = Math.min((stats.gym / 5) * 100, 100);
+        const gymPct = Math.min((stats.gym / 3) * 100, 100);
         const defPct = Math.min((stats.deficit / 7) * 100, 100);
 
         return (
@@ -175,7 +175,7 @@ function WeekSummaryStrip({ data, weeks }) {
             <p className="text-xs font-semibold text-zinc-400">Week {weekNumber}</p>
             <div className="space-y-1.5">
               <Strip label={`🏃 ${stats.km}/25 km`} pct={kmPct} color="bg-emerald-600" />
-              <Strip label={`🏋 ${stats.gym}/5 sess`} pct={gymPct} color="bg-sky-600" />
+              <Strip label={`🏋 ${stats.gym}/3 sess`} pct={gymPct} color="bg-sky-600" />
               <Strip label={`🥗 ${stats.deficit}/7 days`} pct={defPct} color="bg-violet-600" />
             </div>
           </div>

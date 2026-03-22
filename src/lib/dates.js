@@ -1,67 +1,51 @@
-export const CHALLENGE_START = '2026-03-17';
-export const CHALLENGE_END = '2026-04-21';
-export const CALORIE_MAINTENANCE = 1700;
+export const CHALLENGE_START = '2026-03-23';
+export const CHALLENGE_END = '2026-04-23';
+export const CALORIE_MAINTENANCE = 1500;
 export const WEEKLY_KM_TARGET = 25;
-export const WEEKLY_GYM_TARGET = 5;
-export const TOTAL_CHALLENGE_DAYS = 36;
+export const WEEKLY_GYM_TARGET = 3;
+export const TOTAL_CHALLENGE_DAYS = 32;
 
 /**
- * Science-based adaptive calorie protocol for 5-week challenge.
- *
- * Rationale:
- * - Continuous restriction causes metabolic adaptation (leptin drops, T3 thyroid slows,
- *   RMR decreases ~15% after 4 weeks). This reduces the effective deficit over time.
- * - The MATADOR Protocol (Byrne et al. 2017, Int J Obes) showed that 2-week restriction
- *   blocks interleaved with maintenance breaks produced significantly greater fat loss
- *   vs. continuous restriction over the same total duration.
- * - Week 3 diet break restores leptin, T3, and metabolic rate, enabling a more
- *   aggressive final push in weeks 4-5 without the usual metabolic slowdown.
- * - With 5+ gym sessions + 25km running/week, cortisol management is critical.
- *   Starting conservatively (W1) protects against muscle catabolism.
+ * Miguel's Challenge — adaptive calorie protocol (Mar 23 → Apr 23).
+ * Maintenance: 1500 kcal. Week 4 = diet break to prevent metabolic adaptation.
+ * Based on MATADOR Protocol (Byrne et al. 2017).
  */
 export const CALORIE_SCHEDULE = [
   {
     weekNumber: 1,
-    target: 1400,
+    target: 1200,
     deficit: 300,
     label: 'Moderate Start',
-    rationale: 'Conservative deficit while body adapts to high training load. Minimizes cortisol spike and muscle loss. ~270g fat/week.',
+    rationale: 'Conservative 300 kcal deficit while your body adapts to the training load. Keeps energy high for gym + running. ~270g fat/week.',
   },
   {
     weekNumber: 2,
-    target: 1350,
-    deficit: 350,
-    label: 'Building Deficit',
-    rationale: 'Training rhythm established. Increase deficit slightly. Metabolism still responding well. ~320g fat/week.',
+    target: 1200,
+    deficit: 300,
+    label: 'Stay the Course',
+    rationale: 'Same deficit maintained. Body now adapted to training rhythm. Consistent execution compounds. ~270g fat/week.',
   },
   {
     weekNumber: 3,
-    target: 1700,
-    deficit: 0,
-    label: 'Diet Break (Science)',
-    rationale: 'MATADOR Protocol: 1 week at maintenance restores leptin, T3 thyroid, and RMR after 2 weeks of restriction. This prevents the plateau and makes W4–W5 deficits far more effective. Not a cheat week — hit maintenance exactly.',
-    isDietBreak: true,
+    target: 1150,
+    deficit: 350,
+    label: 'Deeper Deficit',
+    rationale: 'Training momentum established — increase deficit slightly. Still safe with your activity level. ~320g fat/week.',
   },
   {
     weekNumber: 4,
-    target: 1350,
-    deficit: 350,
-    label: 'Post-Reset Deficit',
-    rationale: 'Metabolism fully refreshed from diet break. Same 350 kcal deficit is now more effective than it would have been in W3 due to restored leptin sensitivity. ~320g fat/week.',
+    target: 1500,
+    deficit: 0,
+    label: 'Maintenance Reset',
+    rationale: 'MATADOR Protocol: 1 week at maintenance restores leptin, T3 thyroid, and metabolic rate after 3 weeks of restriction. Not a cheat week — stay exactly at 1500 kcal. This makes Week 5 far more effective.',
+    isDietBreak: true,
   },
   {
     weekNumber: 5,
-    target: 1250,
-    deficit: 450,
+    target: 1200,
+    deficit: 300,
     label: 'Final Push',
-    rationale: 'Aggressive final sprint. Safe only because the W3 diet break prevented full metabolic adaptation. Short duration (7 days) limits muscle loss risk. High training volume provides anabolic signal. ~410g fat/week.',
-  },
-  {
-    weekNumber: 6, // Apr 20 only
-    target: 1250,
-    deficit: 450,
-    label: 'Final Day',
-    rationale: 'Challenge completion day. Same target as Week 5.',
+    rationale: 'Post-reset metabolism is fully responsive again. Back to 300 kcal deficit for a strong finish. The diet break makes this week\'s deficit significantly more effective. ~270g fat/week.',
   },
 ];
 

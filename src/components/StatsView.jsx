@@ -106,9 +106,9 @@ export default function StatsView({ data, todayStr }) {
         {/* Overall progress bar */}
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-zinc-500">
-            <span>Mar 16</span>
+            <span>Mar 23</span>
             <span>{Math.round((dayNum / TOTAL_CHALLENGE_DAYS) * 100)}% complete</span>
-            <span>Apr 20</span>
+            <span>Apr 23</span>
           </div>
           <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
             <div

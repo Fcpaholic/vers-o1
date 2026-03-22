@@ -33,10 +33,10 @@ export default function AppHeader({ data, todayStr }) {
           {/* Left: title */}
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white">
-              ACCOUNTABILITY MACHINE
+              MIGUEL'S CHALLENGE
             </h1>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Mar 16 → Apr 20, 2026
+              Mar 23 → Apr 23, 2026
             </p>
           </div>
 

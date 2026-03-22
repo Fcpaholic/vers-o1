@@ -68,6 +68,39 @@ export default function App() {
     }
   }, []);
 
+  // Browser notification reminder — request permission once, then remind at 8 PM if nothing logged
+  useEffect(() => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    const checkAndNotify = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      if (hour < 20) return; // only after 8 PM
+
+      const d = getData().days?.[todayStr];
+      const hasLog = d && (d.calories !== null || (d.gymSessions || 0) > 0 || (d.runs || []).length > 0);
+      if (hasLog) return;
+
+      const lastNotified = localStorage.getItem('last_notified');
+      if (lastNotified === todayStr) return;
+
+      if (Notification.permission === 'granted') {
+        new Notification("Miguel's Challenge", {
+          body: "Nothing logged today. The day is counting — open the app and log it.",
+          icon: '/favicon.ico',
+        });
+        localStorage.setItem('last_notified', todayStr);
+      }
+    };
+
+    const interval = setInterval(checkAndNotify, 60 * 1000); // check every minute
+    checkAndNotify(); // check immediately on mount
+    return () => clearInterval(interval);
+  }, [todayStr]);
+
   // Pull every 30s and when tab becomes visible
   useEffect(() => {
     if (!hasToken) return;
