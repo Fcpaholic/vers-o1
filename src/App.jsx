@@ -186,7 +186,13 @@ export default function App() {
                 <span className={`${syncColor} hidden sm:inline`}>
                   {syncStatus === 'syncing' ? 'Syncing…' : syncStatus === 'synced' ? 'Synced' : 'Sync error'}
                 </span>
-                <button onClick={handleDisconnectSync} className="text-zinc-600 hover:text-zinc-400 ml-1 hidden sm:inline">✕</button>
+                {syncStatus === 'error' ? (
+                  <button onClick={() => { handleDisconnectSync(); setShowSetup(true); }} className="text-red-400 hover:text-red-300 ml-1 underline text-xs">
+                    Fix
+                  </button>
+                ) : (
+                  <button onClick={handleDisconnectSync} className="text-zinc-600 hover:text-zinc-400 ml-1 hidden sm:inline">✕</button>
+                )}
               </>
             ) : (
               <button onClick={() => setShowSetup(true)} className="text-zinc-500 hover:text-emerald-400 transition-colors">
