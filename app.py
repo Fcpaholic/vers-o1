@@ -1,12 +1,10 @@
 """
-Value Bet Tracker — Main Streamlit App
+Value Bet Tracker — Main Streamlit App (redesigned UI)
 """
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime
 
-# Bootstrap DB on every cold start
 from src.data.db import init_db, get_value_bets, get_stats_summary, settle_bet, is_seeded
 from src.data.seeder import run_all_seeds
 from src.model.value import run_full_scan, get_pending_bets
@@ -14,409 +12,387 @@ from src.alerts.telegram import send_value_bet, send_scan_summary, send_test_mes
 from src.ui.bet_card import render_bet_card, render_settled_row
 from config import FOOTBALL_LEAGUES, UNIT_VALUE_EUR, APP_TITLE, CURRENT_SEASON
 
-# ---------------------------------------------------------------------------
-# Page setup
-# ---------------------------------------------------------------------------
+# ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title=APP_TITLE,
+    page_title="Value Bet Tracker",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Dark theme CSS
 st.markdown("""
 <style>
-    body, .stApp { background-color: #0f0f1a; color: #e0e0e0; }
-    .stMetric { background: #1e1e2e; border-radius: 8px; padding: 12px; }
-    .stButton>button { border-radius: 6px; }
-    h1, h2, h3 { color: #c9d1d9; }
-    .stExpander { background: #1e1e2e; border: 1px solid #3a3a5c; border-radius: 8px; }
-    div[data-testid="stSidebarContent"] { background: #13131f; }
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
-    .stTabs [data-baseweb="tab"] { background: #1e1e2e; border-radius: 6px 6px 0 0; }
+  /* Base */
+  .stApp { background:#0d1117; color:#c9d1d9; }
+  [data-testid="stSidebar"] { background:#010409; border-right:1px solid #21262d; }
+  [data-testid="stSidebar"] * { color:#c9d1d9 !important; }
+
+  /* Hide Streamlit chrome */
+  #MainMenu, footer, header { visibility:hidden; }
+
+  /* Tabs */
+  .stTabs [data-baseweb="tab-list"] {
+    gap:0; border-bottom:1px solid #21262d; background:transparent;
+  }
+  .stTabs [data-baseweb="tab"] {
+    background:transparent; border:none; border-bottom:2px solid transparent;
+    color:#8b949e; font-size:0.9rem; padding:10px 20px; margin:0;
+  }
+  .stTabs [aria-selected="true"] {
+    background:transparent; border-bottom:2px solid #3fb950 !important;
+    color:#c9d1d9 !important;
+  }
+
+  /* Metrics */
+  [data-testid="stMetric"] {
+    background:#161b22; border:1px solid #21262d;
+    border-radius:8px; padding:16px !important;
+  }
+  [data-testid="stMetricLabel"] { color:#8b949e !important; font-size:0.8rem !important; }
+  [data-testid="stMetricValue"] { color:#c9d1d9 !important; font-size:1.4rem !important; }
+
+  /* Buttons */
+  .stButton > button {
+    background:#238636; color:#fff; border:none;
+    border-radius:6px; font-weight:600; width:100%;
+  }
+  .stButton > button:hover { background:#2ea043; }
+
+  /* Expander */
+  [data-testid="stExpander"] {
+    background:#161b22; border:1px solid #21262d; border-radius:8px;
+  }
+
+  /* Dataframe */
+  [data-testid="stDataFrame"] { border:1px solid #21262d; border-radius:8px; }
+
+  /* Divider */
+  hr { border-color:#21262d; }
+
+  /* Selectbox */
+  [data-testid="stSelectbox"] > div > div {
+    background:#161b22; border-color:#30363d;
+  }
+
+  /* Warning/info/success boxes */
+  [data-testid="stAlert"] { border-radius:8px; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------------------
-# Init DB + first-run seed check
-# ---------------------------------------------------------------------------
+# ── DB init + first-run seed ──────────────────────────────────────────────────
 init_db()
 
-def _needs_seed() -> bool:
-    """Check if any league has not been seeded yet."""
+def _needs_seed():
     for code in FOOTBALL_LEAGUES:
         if not is_seeded(code, CURRENT_SEASON, "football"):
             return True
-    if not is_seeded("NBA", "2024", "basketball"):
-        return True
-    return False
-
+    return not is_seeded("NBA", "2024", "basketball")
 
 if _needs_seed() and "seeding_done" not in st.session_state:
-    with st.spinner("🌱 First run — seeding historical data... (this may take a minute)"):
-        progress = st.empty()
-        def _cb(msg):
-            progress.caption(msg)
-        run_all_seeds(progress_callback=_cb)
-        progress.empty()
+    with st.spinner("Loading historical data for the first time…"):
+        run_all_seeds()
     st.session_state["seeding_done"] = True
-    st.success("Historical data loaded.")
 else:
     st.session_state.setdefault("seeding_done", True)
 
-# ---------------------------------------------------------------------------
-# Settle bets from card buttons
-# ---------------------------------------------------------------------------
+# ── Settle bets ───────────────────────────────────────────────────────────────
 for key, result in list(st.session_state.items()):
     if key.startswith("settle_") and result in ("WIN", "LOSS", "VOID"):
         bet_id = int(key.split("_")[1])
         bets = get_value_bets()
-        matching = [b for b in bets if b["id"] == bet_id]
-        if matching:
-            b = matching[0]
-            if result == "WIN":
-                pnl = (b["bookmaker_odds"] - 1) * b["stake_eur"]
-            elif result == "LOSS":
-                pnl = -b["stake_eur"]
-            else:
-                pnl = 0.0
+        match = next((b for b in bets if b["id"] == bet_id), None)
+        if match:
+            pnl = (match["bookmaker_odds"] - 1) * match["stake_eur"] if result == "WIN" else (
+                   -match["stake_eur"] if result == "LOSS" else 0.0)
             settle_bet(bet_id, result, pnl)
         del st.session_state[key]
 
-# ---------------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------------
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("🎯 Value Bet Tracker")
+    st.markdown("## 🎯 Value Bet Tracker")
     st.markdown("---")
 
-    st.subheader("🔍 Scan")
-    if st.button("Run Full Scan", type="primary", use_container_width=True):
-        with st.spinner("Scanning markets..."):
+    # Scan button
+    if st.button("🔍  Run Full Scan", use_container_width=True):
+        with st.spinner("Scanning all markets…"):
             new_bets = run_full_scan(save=True)
         st.session_state["last_scan_bets"] = new_bets
         if is_configured():
             send_scan_summary(new_bets)
             for b in new_bets:
                 send_value_bet(b)
-        if new_bets:
-            st.success(f"Found {len(new_bets)} value bet(s)!")
-        else:
-            st.warning("No value bets found — check Diagnostics tab.")
+        msg = f"✅ {len(new_bets)} value bet(s) found!" if new_bets else "No value bets right now."
+        st.session_state["scan_msg"] = (msg, bool(new_bets))
         st.rerun()
 
-    st.markdown("---")
-    st.subheader("🔧 Debug")
-    if st.button("Run Diagnostics", use_container_width=True):
-        st.session_state["run_diag"] = True
-        st.rerun()
+    if "scan_msg" in st.session_state:
+        msg, ok = st.session_state.pop("scan_msg")
+        st.success(msg) if ok else st.info(msg)
 
     st.markdown("---")
-    st.subheader("📊 Stats")
-    summary = get_stats_summary()
-    total = summary.get("total_bets", 0)
-    pnl = summary.get("total_pnl", 0) or 0
-    wins = summary.get("wins", 0) or 0
-    losses = summary.get("losses", 0) or 0
-    settled = summary.get("settled", 0) or 0
-    staked = summary.get("total_staked", 0) or 0
 
-    st.metric("Total Bets", total)
+    # Stats
+    s = get_stats_summary()
+    total   = s.get("total_bets", 0) or 0
+    pnl     = s.get("total_pnl", 0) or 0
+    settled = s.get("settled", 0) or 0
+    wins    = s.get("wins", 0) or 0
+    losses  = s.get("losses", 0) or 0
+    staked  = s.get("total_staked", 0) or 0
+
+    st.metric("Total bets", total)
     st.metric("P&L", f"€{pnl:+.0f}")
-    if settled > 0:
-        roi = (pnl / staked * 100) if staked else 0
-        win_rate = wins / settled * 100 if settled else 0
+    if settled:
+        roi      = pnl / staked * 100 if staked else 0
+        win_rate = wins / settled * 100
         st.metric("ROI", f"{roi:+.1f}%")
-        st.metric("Win Rate", f"{win_rate:.0f}% ({wins}W/{losses}L)")
+        st.metric("Win rate", f"{win_rate:.0f}%  ({wins}W / {losses}L)")
 
     st.markdown("---")
-    st.subheader("⚙️ Settings")
-    st.caption(f"1u = €{UNIT_VALUE_EUR:.0f} | Max stake: 2u (€{2*UNIT_VALUE_EUR:.0f})")
+    st.caption(f"1u = €{UNIT_VALUE_EUR:.0f}  ·  Max 2u per bet")
 
     if is_configured():
-        if st.button("Test Telegram", use_container_width=True):
+        if st.button("📨  Test Telegram", use_container_width=True):
             ok = send_test_message()
             st.success("Sent!") if ok else st.error("Failed — check token/chat ID")
     else:
-        st.warning("Telegram not configured.\nAdd BOT_TOKEN + CHAT_ID to secrets.")
+        st.caption("⚠️ Telegram not set up")
 
-    st.markdown("---")
-    st.caption("football-data.org · API-Football · balldontlie · The Odds API")
+# ── Tabs ──────────────────────────────────────────────────────────────────────
+tab_live, tab_history, tab_analysis, tab_diag = st.tabs([
+    "Live Bets", "History", "Analysis", "Diagnostics"
+])
 
-# ---------------------------------------------------------------------------
-# Main tabs
-# ---------------------------------------------------------------------------
-tab_live, tab_history, tab_analysis, tab_diag = st.tabs(["🔴 Live Bets", "📋 History", "📈 Analysis", "🔧 Diagnostics"])
-
-# ---- LIVE BETS ----
+# ══════════════════════════════════════════════════════════════════════════════
+# LIVE BETS
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_live:
-    st.header("Active Value Bets")
-
     pending = get_pending_bets()
 
     if not pending:
-        st.info("No pending value bets. Run a scan to find opportunities.")
+        st.markdown("### Active Value Bets")
+        st.info("No pending value bets. Hit **Run Full Scan** in the sidebar.")
     else:
-        # Filters
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            sports = ["All"] + sorted(set(b["sport"] for b in pending))
-            sel_sport = st.selectbox("Sport", sports, key="f_sport")
-        with col_f2:
-            leagues = ["All"] + sorted(set(b["league"] for b in pending))
-            sel_league = st.selectbox("League", leagues, key="f_league")
-        with col_f3:
-            markets = ["All"] + sorted(set(b["market"] for b in pending))
-            sel_market = st.selectbox("Market", markets, key="f_market")
+        # Filters row
+        c1, c2, c3, _ = st.columns([1, 1, 1, 3])
+        sports  = ["All"] + sorted({b["sport"]  for b in pending})
+        leagues = ["All"] + sorted({b["league"] for b in pending})
+        markets = ["All"] + sorted({b["market"] for b in pending})
+        sel_sport  = c1.selectbox("Sport",  sports,  label_visibility="collapsed")
+        sel_league = c2.selectbox("League", leagues, label_visibility="collapsed")
+        sel_market = c3.selectbox("Market", markets, label_visibility="collapsed")
 
-        filtered = pending
-        if sel_sport != "All":
-            filtered = [b for b in filtered if b["sport"] == sel_sport]
-        if sel_league != "All":
-            filtered = [b for b in filtered if b["league"] == sel_league]
-        if sel_market != "All":
-            filtered = [b for b in filtered if b["market"] == sel_market]
-
+        filtered = [
+            b for b in pending
+            if (sel_sport  == "All" or b["sport"]  == sel_sport)
+            and (sel_league == "All" or b["league"] == sel_league)
+            and (sel_market == "All" or b["market"] == sel_market)
+        ]
         filtered.sort(key=lambda b: b["edge_pct"], reverse=True)
 
-        st.caption(f"Showing {len(filtered)} bet(s) — sorted by edge")
+        st.markdown(f"**{len(filtered)} bet(s)** · sorted by edge")
+        st.markdown("")
 
         for i, bet in enumerate(filtered):
-            render_bet_card(bet, index=i)
+            render_bet_card(bet, i)
 
-# ---- HISTORY ----
+# ══════════════════════════════════════════════════════════════════════════════
+# HISTORY
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_history:
-    st.header("Settled Bets")
-
-    all_bets = get_value_bets()
-    settled_bets = [b for b in all_bets if b["status"] == "SETTLED"]
+    settled_bets = [b for b in get_value_bets() if b["status"] == "SETTLED"]
 
     if not settled_bets:
+        st.markdown("### Settled Bets")
         st.info("No settled bets yet. Mark bets as Win/Loss from the Live tab.")
     else:
-        # Header row
+        total_pnl   = sum(b.get("profit_loss_eur", 0) or 0 for b in settled_bets)
+        total_staked = sum(b.get("stake_eur", 0) for b in settled_bets)
+        roi = total_pnl / total_staked * 100 if total_staked else 0
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Settled bets", len(settled_bets))
+        c2.metric("P&L", f"€{total_pnl:+.0f}")
+        c3.metric("Total staked", f"€{total_staked:.0f}")
+        c4.metric("ROI", f"{roi:+.1f}%")
+
+        st.markdown("---")
+
+        # Header
         st.markdown("""
-        <div style="display:flex; gap:16px; font-size:0.8em; color:#888; padding:4px 0; border-bottom:1px solid #3a3a5c;">
-            <span style="min-width:80px;">Date</span>
-            <span style="min-width:180px;">Match</span>
-            <span style="min-width:80px;">Pick</span>
-            <span style="min-width:50px;">Odds</span>
-            <span style="min-width:60px;">Edge</span>
-            <span style="min-width:60px;">Conf</span>
-            <span style="min-width:40px;">Stake</span>
-            <span style="min-width:60px;">Result</span>
-            <span>P&L</span>
-        </div>
-        """, unsafe_allow_html=True)
+        <div style="display:grid;grid-template-columns:90px 1fr 100px 60px 70px 60px 50px 70px 70px;
+                    gap:8px;padding:6px 12px;font-size:0.75rem;color:#8b949e;border-bottom:1px solid #21262d;">
+          <span>DATE</span><span>MATCH</span><span>PICK</span>
+          <span>ODDS</span><span>EDGE</span><span>CONF</span>
+          <span>STAKE</span><span>RESULT</span><span>P&L</span>
+        </div>""", unsafe_allow_html=True)
 
         for b in settled_bets:
             render_settled_row(b)
 
-        total_pnl = sum(b.get("profit_loss_eur", 0) or 0 for b in settled_bets)
-        total_staked = sum(b.get("stake_eur", 0) for b in settled_bets)
-        roi = (total_pnl / total_staked * 100) if total_staked else 0
-        st.markdown("---")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total P&L", f"€{total_pnl:+.0f}")
-        col2.metric("Total Staked", f"€{total_staked:.0f}")
-        col3.metric("ROI", f"{roi:+.1f}%")
-
-# ---- ANALYSIS ----
+# ══════════════════════════════════════════════════════════════════════════════
+# ANALYSIS
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_analysis:
-    st.header("Performance Analysis")
+    all_settled = [b for b in get_value_bets()
+                   if b["status"] == "SETTLED" and b.get("result") in ("WIN", "LOSS")]
 
-    all_bets = get_value_bets()
-    settled = [b for b in all_bets if b["status"] == "SETTLED" and b.get("result") in ("WIN", "LOSS")]
-
-    if len(settled) < 2:
-        st.info("Not enough settled bets to show analysis yet. Need at least 2 settled results.")
+    if len(all_settled) < 2:
+        st.markdown("### Performance Analysis")
+        st.info("Need at least 2 settled results to show analysis.")
     else:
-        # Cumulative P&L chart
-        dates = [b["settled_at"][:10] if b.get("settled_at") else b["match_date"] for b in settled]
-        pnls = [b.get("profit_loss_eur", 0) or 0 for b in settled]
+        pnls    = [b.get("profit_loss_eur", 0) or 0 for b in all_settled]
+        dates   = [b.get("settled_at", b["match_date"])[:10] for b in all_settled]
         cum_pnl = []
-        running = 0
+        total   = 0
         for p in pnls:
-            running += p
-            cum_pnl.append(running)
+            total += p
+            cum_pnl.append(total)
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=dates, y=cum_pnl,
-            mode="lines+markers",
-            name="Cumulative P&L",
-            line=dict(color="#00c853" if cum_pnl[-1] >= 0 else "#f44336", width=2),
+        color = "#3fb950" if cum_pnl[-1] >= 0 else "#f85149"
+
+        fig = go.Figure(go.Scatter(
+            x=dates, y=cum_pnl, mode="lines+markers",
+            line=dict(color=color, width=2),
             fill="tozeroy",
-            fillcolor="rgba(0,200,83,0.08)" if cum_pnl[-1] >= 0 else "rgba(244,67,54,0.08)",
+            fillcolor=f"{'rgba(63,185,80,0.08)' if cum_pnl[-1] >= 0 else 'rgba(248,81,73,0.08)'}",
+            marker=dict(size=6),
         ))
-        fig.add_hline(y=0, line_dash="dash", line_color="#666")
+        fig.add_hline(y=0, line_dash="dot", line_color="#30363d")
         fig.update_layout(
             title="Cumulative P&L (€)",
-            paper_bgcolor="#0f0f1a",
-            plot_bgcolor="#1e1e2e",
-            font=dict(color="#ccc"),
-            xaxis=dict(gridcolor="#2a2a3e"),
-            yaxis=dict(gridcolor="#2a2a3e"),
-            height=350,
+            paper_bgcolor="#0d1117", plot_bgcolor="#161b22",
+            font=dict(color="#8b949e"),
+            xaxis=dict(gridcolor="#21262d", showgrid=True),
+            yaxis=dict(gridcolor="#21262d", showgrid=True),
+            height=320, margin=dict(l=0, r=0, t=40, b=0),
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # Edge vs result scatter
-        edges = [b["edge_pct"] for b in settled]
-        results_num = [1 if b["result"] == "WIN" else 0 for b in settled]
-        colors = ["#00c853" if r == 1 else "#f44336" for r in results_num]
-
-        fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(
-            x=edges, y=results_num,
-            mode="markers",
-            marker=dict(color=colors, size=10, opacity=0.8),
-            text=[f"{b['home_team']} vs {b['away_team']}" for b in settled],
-        ))
-        fig2.update_layout(
-            title="Edge % vs Outcome",
-            xaxis_title="Edge (%)",
-            yaxis=dict(tickvals=[0, 1], ticktext=["Loss", "Win"]),
-            paper_bgcolor="#0f0f1a",
-            plot_bgcolor="#1e1e2e",
-            font=dict(color="#ccc"),
-            xaxis=dict(gridcolor="#2a2a3e"),
-            height=280,
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-
-        # Stats by league
-        st.subheader("By League")
-        league_data = {}
-        for b in settled:
+        # League breakdown
+        st.markdown("### By League")
+        league_data: dict = {}
+        for b in all_settled:
             lg = b["league"]
-            if lg not in league_data:
-                league_data[lg] = {"bets": 0, "wins": 0, "pnl": 0.0}
-            league_data[lg]["bets"] += 1
-            if b["result"] == "WIN":
-                league_data[lg]["wins"] += 1
-            league_data[lg]["pnl"] += b.get("profit_loss_eur", 0) or 0
+            d  = league_data.setdefault(lg, {"bets": 0, "wins": 0, "pnl": 0.0})
+            d["bets"] += 1
+            d["wins"] += int(b["result"] == "WIN")
+            d["pnl"]  += b.get("profit_loss_eur", 0) or 0
 
-        rows = []
-        for lg, d in league_data.items():
-            rows.append({
-                "League": lg,
-                "Bets": d["bets"],
-                "Wins": d["wins"],
-                "Win%": f"{d['wins']/d['bets']*100:.0f}%",
-                "P&L (€)": f"€{d['pnl']:+.0f}",
-            })
+        rows = [
+            {
+                "League":   lg,
+                "Bets":     d["bets"],
+                "W":        d["wins"],
+                "L":        d["bets"] - d["wins"],
+                "Win %":    f"{d['wins']/d['bets']*100:.0f}%",
+                "P&L":      f"€{d['pnl']:+.0f}",
+            }
+            for lg, d in league_data.items()
+        ]
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-# ---- DIAGNOSTICS ----
+# ══════════════════════════════════════════════════════════════════════════════
+# DIAGNOSTICS
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_diag:
-    st.header("🔧 Diagnostics")
-    st.caption("Use this to debug why scans return no results.")
+    st.markdown("### Diagnostics")
+    st.caption("Run this to understand why scans return no results.")
 
-    if st.button("Run Diagnostics Now", type="primary") or st.session_state.get("run_diag"):
-        st.session_state["run_diag"] = False
+    if st.button("▶  Run Diagnostics", use_container_width=False):
 
-        from src.data.fetcher import fetch_football_odds, fetch_basketball_odds, ODDS_API_FOOTBALL_KEYS
+        from src.data.fetcher import fetch_football_odds, ODDS_API_FOOTBALL_KEYS
         from src.data.db import get_match_count, get_conn
         from src.model.poisson import expected_goals, outcome_probs
         from config import ODDS_API_KEY, FOOTBALL_DATA_API_KEY
 
-        # 1. API Key status
-        st.subheader("1. API Keys")
-        col1, col2 = st.columns(2)
-        col1.metric("Odds API Key", "✅ Set" if ODDS_API_KEY else "❌ Missing")
-        col2.metric("Football Data Key", "✅ Set" if FOOTBALL_DATA_API_KEY else "❌ Missing")
+        # 1. Keys
+        st.markdown("#### 1 · API Keys")
+        c1, c2 = st.columns(2)
+        c1.metric("Odds API", "✅ Set" if ODDS_API_KEY else "❌ Missing")
+        c2.metric("Football Data", "✅ Set" if FOOTBALL_DATA_API_KEY else "❌ Missing")
 
-        # 2. Database records
-        st.subheader("2. Historical Data in Database")
-        db_rows = []
-        for code in FOOTBALL_LEAGUES:
-            count = get_match_count(code)
-            db_rows.append({"League": code, "Matches stored": count, "Status": "✅" if count > 0 else "❌ Empty"})
+        # 2. DB records
+        st.markdown("#### 2 · Matches in database")
+        db_rows = [
+            {"League": code, "Matches": get_match_count(code)}
+            for code in FOOTBALL_LEAGUES
+        ]
         st.dataframe(pd.DataFrame(db_rows), use_container_width=True, hide_index=True)
 
-        # 3. Odds API - live events per league
-        st.subheader("3. Live Events from Odds API")
+        # 3. Odds API live events
+        st.markdown("#### 3 · Live events from Odds API")
         odds_rows = []
         sample_event = None
         for code, odds_key in ODDS_API_FOOTBALL_KEYS.items():
-            with st.spinner(f"Fetching {code}..."):
-                events = fetch_football_odds(odds_key)
-            odds_rows.append({
-                "League": code,
-                "Events returned": len(events),
-                "Status": "✅" if events else "❌ None",
-            })
+            events = fetch_football_odds(odds_key)
+            odds_rows.append({"League": code, "Events": len(events)})
             if events and not sample_event:
                 sample_event = (code, events[0])
         st.dataframe(pd.DataFrame(odds_rows), use_container_width=True, hide_index=True)
 
-        # 4. Sample model prediction
+        # 4. Sample prediction
         if sample_event:
             league_code, ev = sample_event
             home = ev.get("home_team", "")
             away = ev.get("away_team", "")
-            st.subheader("4. Sample Model Prediction")
-            st.write(f"**Match:** {home} vs {away} ({league_code})")
-            eg = expected_goals(home, away, league_code)
+
+            st.markdown(f"#### 4 · Model prediction — {home} vs {away}")
+            eg    = expected_goals(home, away, league_code)
             probs = outcome_probs(eg["lambda_h"], eg["lambda_a"])
 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("xG Home", f"{eg['lambda_h']:.2f}")
-            col2.metric("xG Away", f"{eg['lambda_a']:.2f}")
-            col3.metric("Data quality flag", "⚠️ Low data" if eg["data_quality_flag"] else "✅ OK")
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("xG Home",  f"{eg['lambda_h']:.2f}")
+            c2.metric("xG Away",  f"{eg['lambda_a']:.2f}")
+            c3.metric("P(Home)",  f"{probs['home']*100:.1f}%")
+            c4.metric("P(Draw)",  f"{probs['draw']*100:.1f}%")
+            c5.metric("P(Away)",  f"{probs['away']*100:.1f}%")
 
-            col4, col5, col6 = st.columns(3)
-            col4.metric("P(Home)", f"{probs['home']*100:.1f}%")
-            col5.metric("P(Draw)", f"{probs['draw']*100:.1f}%")
-            col6.metric("P(Away)", f"{probs['away']*100:.1f}%")
+            if eg["data_quality_flag"]:
+                st.warning("⚠️ Low data — model using league averages. Team names may not match between Odds API and DB.")
 
-            # Show bookmaker odds vs model
-            st.write("**Bookmaker odds vs Model fair odds:**")
+            # Edge table
+            st.markdown("#### 5 · Book odds vs model")
             bm_rows = []
-            for bm in ev.get("bookmakers", [])[:3]:
+            for bm in ev.get("bookmakers", [])[:4]:
                 for mkt in bm.get("markets", []):
                     if mkt["key"] == "h2h":
-                        for outcome in mkt["outcomes"]:
-                            side = outcome["name"]
-                            book_odds = outcome["price"]
-                            if side == home:
-                                model_prob = probs["home"]
-                            elif side == away:
-                                model_prob = probs["away"]
+                        for o in mkt["outcomes"]:
+                            if o["name"] == home:
+                                mp = probs["home"]
+                            elif o["name"] == away:
+                                mp = probs["away"]
                             else:
-                                model_prob = probs["draw"]
-                            fair = round(1/model_prob, 2) if model_prob > 0 else 0
-                            edge = round((model_prob - 1/book_odds) * 100, 1)
+                                mp = probs["draw"]
+                            fair  = round(1 / mp, 2) if mp > 0 else "-"
+                            edge  = round((mp - 1/o["price"]) * 100, 1)
                             bm_rows.append({
-                                "Bookmaker": bm["title"],
-                                "Selection": side,
-                                "Book odds": book_odds,
-                                "Model fair": fair,
-                                "Edge %": f"{edge:+.1f}%",
+                                "Book":      bm["title"],
+                                "Pick":      o["name"],
+                                "Book odds": o["price"],
+                                "Fair odds": fair,
+                                "Edge %":    f"{edge:+.1f}%",
+                                "Value?":    "✅" if edge > 3 else "—",
                             })
             if bm_rows:
                 st.dataframe(pd.DataFrame(bm_rows), use_container_width=True, hide_index=True)
 
-            # 5. Team name match check
-            st.subheader("5. Team Name Match (DB lookup)")
+            # Name match
+            st.markdown("#### 6 · Team name match in DB")
             conn = get_conn()
-            home_db = conn.execute(
+            h_match = conn.execute(
                 "SELECT name FROM teams WHERE league=? AND name LIKE ?",
                 (league_code, f"%{home.split()[0]}%")
             ).fetchall()
-            away_db = conn.execute(
+            a_match = conn.execute(
                 "SELECT name FROM teams WHERE league=? AND name LIKE ?",
                 (league_code, f"%{away.split()[0]}%")
             ).fetchall()
             conn.close()
-            col1, col2 = st.columns(2)
-            col1.write(f"**'{home}'** in DB:")
-            col1.write([r["name"] for r in home_db] or "❌ No match found")
-            col2.write(f"**'{away}'** in DB:")
-            col2.write([r["name"] for r in away_db] or "❌ No match found")
-            if not home_db or not away_db:
-                st.error("Team names don't match between Odds API and football-data.org. This is why no edges are found — model falls back to league averages.")
+            c1, c2 = st.columns(2)
+            c1.write(f"**{home}** → DB: {[r['name'] for r in h_match] or '❌ not found'}")
+            c2.write(f"**{away}** → DB: {[r['name'] for r in a_match] or '❌ not found'}")
+            if not h_match or not a_match:
+                st.error("Team name mismatch — this is why edges aren't found. Model falls back to league averages and the odds look off.")
         else:
-            st.warning("No live events returned from Odds API. Check your key or try again later.")
+            st.warning("No live events returned from Odds API.")

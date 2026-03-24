@@ -1,12 +1,8 @@
-"""
-Bet card UI components for Streamlit.
-Renders minimal cards (default) with expandable detail.
-"""
+"""Bet card UI — clean, minimal design."""
 import streamlit as st
 
-
-SPORT_EMOJI = {"football": "⚽", "basketball": "🏀"}
-LEAGUE_SHORT = {
+SPORT_ICON = {"football": "⚽", "basketball": "🏀"}
+LEAGUE_NAME = {
     "PL": "Premier League", "PD": "La Liga", "BL1": "Bundesliga",
     "SA": "Serie A", "FL1": "Ligue 1", "DED": "Eredivisie",
     "PPL": "Liga Portugal", "BSA": "Belgian Pro League",
@@ -14,114 +10,111 @@ LEAGUE_SHORT = {
 }
 
 
-def _edge_color(edge_pct: float) -> str:
-    if edge_pct >= 10:
-        return "#00c853"   # green
-    elif edge_pct >= 6:
-        return "#ff9800"   # orange
-    else:
-        return "#64b5f6"   # blue
-
-
-def _confidence_label(conf: float, dq_flag: bool) -> str:
-    label = f"{conf:.1f}%"
-    if dq_flag:
-        label += " *"
-    return label
-
-
 def render_bet_card(bet: dict, index: int = 0):
-    """Render a minimal bet card with an expandable detail section."""
-    sport_emoji = SPORT_EMOJI.get(bet["sport"], "🎯")
-    league_name = LEAGUE_SHORT.get(bet["league"], bet["league"])
-    edge_color = _edge_color(bet["edge_pct"])
-    dq_flag = bet.get("data_quality_flag", 0)
-    conf_label = _confidence_label(bet["confidence_pct"], bool(dq_flag))
-    high_value = bet["stake_units"] >= 2.0
-
-    # --- Minimal card ---
-    card_key = f"card_{index}_{bet.get('id', index)}"
-
-    badge = "🔥 HIGH VALUE" if high_value else "✅ VALUE"
+    high    = bet["stake_units"] >= 2.0
+    dq      = bool(bet.get("data_quality_flag"))
+    league  = LEAGUE_NAME.get(bet["league"], bet["league"])
+    icon    = SPORT_ICON.get(bet["sport"], "🎯")
+    conf    = f"{bet['confidence_pct']:.0f}%" + (" *" if dq else "")
+    edge_c  = "#3fb950" if bet["edge_pct"] >= 10 else ("#d29922" if bet["edge_pct"] >= 6 else "#58a6ff")
+    badge   = ("🔥 HIGH VALUE · 2u" if high else "✅ VALUE · 1u")
+    badge_c = "#d29922" if high else "#3fb950"
 
     st.markdown(f"""
     <div style="
-        background: #1e1e2e;
-        border: 1px solid {'#00c853' if high_value else '#3a3a5c'};
-        border-radius: 10px;
-        padding: 14px 18px;
-        margin-bottom: 8px;
+        background:#161b22;
+        border:1px solid {'#d29922' if high else '#21262d'};
+        border-left:3px solid {badge_c};
+        border-radius:8px;
+        padding:16px 20px;
+        margin-bottom:10px;
     ">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.85em; color:#888;">{sport_emoji} {league_name} &nbsp;|&nbsp; {bet['match_date']}</span>
-            <span style="font-size:0.8em; color:{'#00c853' if high_value else '#64b5f6'}; font-weight:600;">{badge}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span style="font-size:0.78rem;color:#8b949e;letter-spacing:0.04em;">
+                {icon} {league.upper()} &nbsp;·&nbsp; {bet['match_date']}
+            </span>
+            <span style="font-size:0.78rem;font-weight:700;color:{badge_c};">{badge}</span>
         </div>
-        <div style="font-size:1.05em; font-weight:700; margin:6px 0;">
-            {bet['home_team']} vs {bet['away_team']}
+
+        <div style="font-size:1.1rem;font-weight:700;color:#e6edf3;margin-bottom:12px;">
+            {bet['home_team']} <span style="color:#8b949e;font-weight:400;">vs</span> {bet['away_team']}
         </div>
-        <div style="display:flex; gap:20px; flex-wrap:wrap; font-size:0.92em;">
-            <span><b>{bet['market']}</b> — {bet['selection']}</span>
-            <span>Odds: <b>{bet['bookmaker_odds']:.2f}</b></span>
-            <span>Fair: <b>{bet['fair_value_odds']:.2f}</b></span>
-            <span>Edge: <b style="color:{edge_color}">+{bet['edge_pct']:.1f}%</b></span>
-            <span>Conf: <b>{conf_label}</b></span>
-            <span>Stake: <b>{bet['stake_units']:.0f}u (€{bet['stake_eur']:.0f})</b></span>
+
+        <div style="display:flex;flex-wrap:wrap;gap:24px;font-size:0.88rem;">
+            <div>
+                <div style="color:#8b949e;font-size:0.72rem;margin-bottom:2px;">MARKET</div>
+                <div style="color:#c9d1d9;font-weight:600;">{bet['market']} — {bet['selection']}</div>
+            </div>
+            <div>
+                <div style="color:#8b949e;font-size:0.72rem;margin-bottom:2px;">ODDS</div>
+                <div style="color:#e6edf3;font-weight:700;">{bet['bookmaker_odds']:.2f}</div>
+            </div>
+            <div>
+                <div style="color:#8b949e;font-size:0.72rem;margin-bottom:2px;">FAIR VALUE</div>
+                <div style="color:#c9d1d9;">{bet['fair_value_odds']:.2f}</div>
+            </div>
+            <div>
+                <div style="color:#8b949e;font-size:0.72rem;margin-bottom:2px;">EDGE</div>
+                <div style="color:{edge_c};font-weight:700;">+{bet['edge_pct']:.1f}%</div>
+            </div>
+            <div>
+                <div style="color:#8b949e;font-size:0.72rem;margin-bottom:2px;">CONFIDENCE</div>
+                <div style="color:#c9d1d9;">{conf}</div>
+            </div>
+            <div>
+                <div style="color:#8b949e;font-size:0.72rem;margin-bottom:2px;">STAKE</div>
+                <div style="color:#e6edf3;font-weight:700;">€{bet['stake_eur']:.0f}</div>
+            </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # --- Expandable detail ---
-    with st.expander("Details", expanded=False):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Bookmaker Odds", f"{bet['bookmaker_odds']:.2f}")
-            st.metric("Edge", f"+{bet['edge_pct']:.1f}%")
-        with col2:
-            st.metric("Fair Value Odds", f"{bet['fair_value_odds']:.2f}")
-            st.metric("Confidence", conf_label)
-        with col3:
-            implied = round(100 / bet['bookmaker_odds'], 1)
-            fair_prob = round(100 / bet['fair_value_odds'], 1)
-            st.metric("Book Implied Prob", f"{implied:.1f}%")
-            st.metric("Model Prob", f"{fair_prob:.1f}%")
-
-        st.markdown(f"**Stake:** {bet['stake_units']:.0f}u = **€{bet['stake_eur']:.0f}**")
+    # Expandable detail
+    with st.expander("View detail", expanded=False):
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Book odds",   f"{bet['bookmaker_odds']:.2f}")
+        c2.metric("Fair odds",   f"{bet['fair_value_odds']:.2f}")
+        c3.metric("Book prob",   f"{100/bet['bookmaker_odds']:.1f}%")
+        c4.metric("Model prob",  f"{100/bet['fair_value_odds']:.1f}%")
 
         if bet.get("model_factors"):
-            st.info(f"📊 {bet['model_factors']}")
+            st.markdown(f"> 📊 {bet['model_factors']}")
 
-        if dq_flag:
-            st.warning("\\* Confidence reduced — limited historical data for one or both teams. Bet may still have merit; review manually.")
+        if dq:
+            st.warning("\\* Confidence reduced — limited historical data for one or both teams.")
 
         if bet.get("status") == "PENDING":
-            cols = st.columns([1, 1, 2])
-            with cols[0]:
-                if st.button("✅ Mark Win", key=f"win_{card_key}"):
-                    st.session_state[f"settle_{bet['id']}"] = "WIN"
-                    st.rerun()
-            with cols[1]:
-                if st.button("❌ Mark Loss", key=f"loss_{card_key}"):
-                    st.session_state[f"settle_{bet['id']}"] = "LOSS"
-                    st.rerun()
+            c1, c2, _ = st.columns([1, 1, 4])
+            bid = bet.get("id")
+            if c1.button("Win ✅", key=f"w_{index}_{bid}"):
+                st.session_state[f"settle_{bid}"] = "WIN"
+                st.rerun()
+            if c2.button("Loss ❌", key=f"l_{index}_{bid}"):
+                st.session_state[f"settle_{bid}"] = "LOSS"
+                st.rerun()
 
 
 def render_settled_row(bet: dict):
-    """Compact row for settled bets history."""
-    result_color = {"WIN": "#00c853", "LOSS": "#f44336", "VOID": "#888"}.get(bet.get("result", ""), "#888")
-    pnl = bet.get("profit_loss_eur", 0) or 0
+    colors  = {"WIN": "#3fb950", "LOSS": "#f85149", "VOID": "#8b949e"}
+    result  = bet.get("result", "—")
+    color   = colors.get(result, "#8b949e")
+    pnl     = bet.get("profit_loss_eur", 0) or 0
     pnl_str = f"+€{pnl:.0f}" if pnl >= 0 else f"-€{abs(pnl):.0f}"
-    dq = " *" if bet.get("data_quality_flag") else ""
+    dq      = " *" if bet.get("data_quality_flag") else ""
 
     st.markdown(f"""
-    <div style="display:flex; gap:16px; align-items:center; padding:8px 0; border-bottom:1px solid #2a2a3e; font-size:0.88em;">
-        <span style="min-width:80px; color:#aaa;">{bet['match_date']}</span>
-        <span style="min-width:180px;">{bet['home_team']} vs {bet['away_team']}</span>
-        <span style="min-width:80px; color:#ccc;">{bet['selection']}</span>
-        <span style="min-width:50px;">{bet['bookmaker_odds']:.2f}</span>
-        <span style="min-width:60px; color:#64b5f6;">+{bet['edge_pct']:.1f}%</span>
-        <span style="min-width:60px;">{bet['confidence_pct']:.0f}%{dq}</span>
-        <span style="min-width:40px;">{bet['stake_units']:.0f}u</span>
-        <span style="min-width:60px; color:{result_color}; font-weight:600;">{bet.get('result', '-')}</span>
-        <span style="color:{result_color};">{pnl_str}</span>
+    <div style="display:grid;
+        grid-template-columns:90px 1fr 100px 60px 70px 60px 50px 70px 70px;
+        gap:8px;align-items:center;
+        padding:10px 12px;border-bottom:1px solid #21262d;font-size:0.85rem;">
+      <span style="color:#8b949e;">{bet['match_date']}</span>
+      <span style="color:#c9d1d9;">{bet['home_team']} vs {bet['away_team']}</span>
+      <span style="color:#e6edf3;font-weight:600;">{bet['selection']}</span>
+      <span>{bet['bookmaker_odds']:.2f}</span>
+      <span style="color:#58a6ff;">+{bet['edge_pct']:.1f}%</span>
+      <span style="color:#8b949e;">{bet['confidence_pct']:.0f}%{dq}</span>
+      <span>{bet['stake_units']:.0f}u</span>
+      <span style="color:{color};font-weight:700;">{result}</span>
+      <span style="color:{color};">{pnl_str}</span>
     </div>
     """, unsafe_allow_html=True)
