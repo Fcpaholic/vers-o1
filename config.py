@@ -22,6 +22,9 @@ API_FOOTBALL_KEY = _secret("API_FOOTBALL_KEY")
 TELEGRAM_BOT_TOKEN = _secret("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = _secret("TELEGRAM_CHAT_ID")
 
+# --- Bankroll ---
+STARTING_BANKROLL_EUR = 10_000.0   # Paper trading bankroll
+
 # --- Unit Sizing ---
 UNIT_VALUE_EUR = 10.0       # 1u = €10, fixed
 MAX_STAKE_UNITS = 2.0       # Never exceed 2u
