@@ -103,7 +103,13 @@ with st.sidebar:
         if new_bets:
             st.success(f"Found {len(new_bets)} value bet(s)!")
         else:
-            st.info("No value bets right now.")
+            st.warning("No value bets found — check Diagnostics tab.")
+        st.rerun()
+
+    st.markdown("---")
+    st.subheader("🔧 Debug")
+    if st.button("Run Diagnostics", use_container_width=True):
+        st.session_state["run_diag"] = True
         st.rerun()
 
     st.markdown("---")
@@ -141,7 +147,7 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Main tabs
 # ---------------------------------------------------------------------------
-tab_live, tab_history, tab_analysis = st.tabs(["🔴 Live Bets", "📋 History", "📈 Analysis"])
+tab_live, tab_history, tab_analysis, tab_diag = st.tabs(["🔴 Live Bets", "📋 History", "📈 Analysis", "🔧 Diagnostics"])
 
 # ---- LIVE BETS ----
 with tab_live:
@@ -302,3 +308,115 @@ with tab_analysis:
                 "P&L (€)": f"€{d['pnl']:+.0f}",
             })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+# ---- DIAGNOSTICS ----
+with tab_diag:
+    st.header("🔧 Diagnostics")
+    st.caption("Use this to debug why scans return no results.")
+
+    if st.button("Run Diagnostics Now", type="primary") or st.session_state.get("run_diag"):
+        st.session_state["run_diag"] = False
+
+        from src.data.fetcher import fetch_football_odds, fetch_basketball_odds, ODDS_API_FOOTBALL_KEYS
+        from src.data.db import get_match_count, get_conn
+        from src.model.poisson import expected_goals, outcome_probs
+        from config import ODDS_API_KEY, FOOTBALL_DATA_API_KEY
+
+        # 1. API Key status
+        st.subheader("1. API Keys")
+        col1, col2 = st.columns(2)
+        col1.metric("Odds API Key", "✅ Set" if ODDS_API_KEY else "❌ Missing")
+        col2.metric("Football Data Key", "✅ Set" if FOOTBALL_DATA_API_KEY else "❌ Missing")
+
+        # 2. Database records
+        st.subheader("2. Historical Data in Database")
+        db_rows = []
+        for code in FOOTBALL_LEAGUES:
+            count = get_match_count(code)
+            db_rows.append({"League": code, "Matches stored": count, "Status": "✅" if count > 0 else "❌ Empty"})
+        st.dataframe(pd.DataFrame(db_rows), use_container_width=True, hide_index=True)
+
+        # 3. Odds API - live events per league
+        st.subheader("3. Live Events from Odds API")
+        odds_rows = []
+        sample_event = None
+        for code, odds_key in ODDS_API_FOOTBALL_KEYS.items():
+            with st.spinner(f"Fetching {code}..."):
+                events = fetch_football_odds(odds_key)
+            odds_rows.append({
+                "League": code,
+                "Events returned": len(events),
+                "Status": "✅" if events else "❌ None",
+            })
+            if events and not sample_event:
+                sample_event = (code, events[0])
+        st.dataframe(pd.DataFrame(odds_rows), use_container_width=True, hide_index=True)
+
+        # 4. Sample model prediction
+        if sample_event:
+            league_code, ev = sample_event
+            home = ev.get("home_team", "")
+            away = ev.get("away_team", "")
+            st.subheader("4. Sample Model Prediction")
+            st.write(f"**Match:** {home} vs {away} ({league_code})")
+            eg = expected_goals(home, away, league_code)
+            probs = outcome_probs(eg["lambda_h"], eg["lambda_a"])
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("xG Home", f"{eg['lambda_h']:.2f}")
+            col2.metric("xG Away", f"{eg['lambda_a']:.2f}")
+            col3.metric("Data quality flag", "⚠️ Low data" if eg["data_quality_flag"] else "✅ OK")
+
+            col4, col5, col6 = st.columns(3)
+            col4.metric("P(Home)", f"{probs['home']*100:.1f}%")
+            col5.metric("P(Draw)", f"{probs['draw']*100:.1f}%")
+            col6.metric("P(Away)", f"{probs['away']*100:.1f}%")
+
+            # Show bookmaker odds vs model
+            st.write("**Bookmaker odds vs Model fair odds:**")
+            bm_rows = []
+            for bm in ev.get("bookmakers", [])[:3]:
+                for mkt in bm.get("markets", []):
+                    if mkt["key"] == "h2h":
+                        for outcome in mkt["outcomes"]:
+                            side = outcome["name"]
+                            book_odds = outcome["price"]
+                            if side == home:
+                                model_prob = probs["home"]
+                            elif side == away:
+                                model_prob = probs["away"]
+                            else:
+                                model_prob = probs["draw"]
+                            fair = round(1/model_prob, 2) if model_prob > 0 else 0
+                            edge = round((model_prob - 1/book_odds) * 100, 1)
+                            bm_rows.append({
+                                "Bookmaker": bm["title"],
+                                "Selection": side,
+                                "Book odds": book_odds,
+                                "Model fair": fair,
+                                "Edge %": f"{edge:+.1f}%",
+                            })
+            if bm_rows:
+                st.dataframe(pd.DataFrame(bm_rows), use_container_width=True, hide_index=True)
+
+            # 5. Team name match check
+            st.subheader("5. Team Name Match (DB lookup)")
+            conn = get_conn()
+            home_db = conn.execute(
+                "SELECT name FROM teams WHERE league=? AND name LIKE ?",
+                (league_code, f"%{home.split()[0]}%")
+            ).fetchall()
+            away_db = conn.execute(
+                "SELECT name FROM teams WHERE league=? AND name LIKE ?",
+                (league_code, f"%{away.split()[0]}%")
+            ).fetchall()
+            conn.close()
+            col1, col2 = st.columns(2)
+            col1.write(f"**'{home}'** in DB:")
+            col1.write([r["name"] for r in home_db] or "❌ No match found")
+            col2.write(f"**'{away}'** in DB:")
+            col2.write([r["name"] for r in away_db] or "❌ No match found")
+            if not home_db or not away_db:
+                st.error("Team names don't match between Odds API and football-data.org. This is why no edges are found — model falls back to league averages.")
+        else:
+            st.warning("No live events returned from Odds API. Check your key or try again later.")
