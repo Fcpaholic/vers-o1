@@ -2,3 +2,18 @@ node_modules/
 dist/
 .DS_Store
 .vite/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+# Database (local only)
+data/betting.db
+data/*.db
+
+# Streamlit secrets (never commit)
+.streamlit/secrets.toml
